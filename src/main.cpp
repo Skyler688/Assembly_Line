@@ -5,10 +5,10 @@
 
 std::vector<Task> assemblyLine;
 
-int main() 
+void test()
 {
     AssemblyLine line(25);
-
+    
     // Simulated heavy functions of variable workloads.
     Task task_1 = [](std::any &data, int id)
     {
@@ -24,13 +24,13 @@ int main()
         // NOTE -> The data variable can be any data type. it is important to cast it as the correct type.
         int num = std::any_cast<int>(data);
         // printf("thread_%d: %d\n", id, num);
-
+    
         
         data = test;
     };
-
+    
     assemblyLine.push_back(task_1);
-
+    
     Task task_2 = [](std::any &data, int id)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
@@ -43,15 +43,15 @@ int main()
         // }
         float num = std::any_cast<float>(data);
         // printf("thread_%d: %f\n", id, num);
-
-
+    
+    
         std::string message = "hello"; // Can change the data type as long as the next function in the line casts the new type correctly.
-
+    
         data = message;
     };
-
+    
     assemblyLine.push_back(task_2);
-
+    
     Task task_3 = [](std::any &data, int id)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
@@ -62,14 +62,14 @@ int main()
         
         std::string message = std::any_cast<std::string>(data);
         // printf("thread_%d: %s\n", id, message.c_str());
-
+    
         float num = test;
-
+    
         data = num;
     };
-
+    
     assemblyLine.push_back(task_3);
-
+    
     Task task_4 = [](std::any &data, int id)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
@@ -81,40 +81,49 @@ int main()
         float num = std::any_cast<float>(data);
         // printf("thread_%d: %f\n", id, num);
     };
-
+    
     assemblyLine.push_back(task_4);
-
+    
     int lineID = line.CreateAssemblyLine(assemblyLine);
-
+    
     assemblyLine.clear();
     
-    for (int i = 0; i < 30000; i++)
+    for (int i = 0; i < 300; i++)
     {
         line.AddToAsyncBuffer(lineID, i);
     }
-
+    
     while (true)
     {
         for (int i = 0; i < 30; i++)
         {
             line.AddToBuffer(lineID, i); 
         }
-        
-        
+                
         int size = line.LaunchAsyncQueue(); // must wait for normal queue to finish before using async
         printf("async queue: %d\n", size);
         
         
         int sync = line.LaunchQueue();
         printf("\nsync queue: %d\n\n", sync);
-        
+
         if (size == 0) {
             printf("\n\n");
             break;
         }
     }
-
+    
     printf("Done\n");
+}
+
+int main() 
+{
+
+    printf("hardware_threads: %d\n", hardwareThreads());
+    for (size_t i = 0; i < 100; i++)
+    {
+        test();
+    }
 
     return 0;
 }

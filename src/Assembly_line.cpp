@@ -1,5 +1,11 @@
 #include "Assembly_line.h"
 
+int hardwareThreads()
+{
+    int num_of_threads = std::thread::hardware_concurrency();
+    return num_of_threads;
+}
+
 // Private
 void AssemblyLine::workerThread(int id)
 {
@@ -12,7 +18,11 @@ void AssemblyLine::workerThread(int id)
         
         // Will wait "sleep" once the queue is empty.
         thread_wake.wait(lock, [&] {
-            if (!activeQueue.empty())
+            if (kill_threads)
+            {
+                return true;
+            }
+            else if (!activeQueue.empty())
             {
                 local_async_flag = false;
                 is_async[id] = local_async_flag;
@@ -51,6 +61,11 @@ void AssemblyLine::workerThread(int id)
                 }
             }
         });
+
+        if (kill_threads)
+        {
+            break;
+        }
 
         // Grab the task from the end of the list and remove it.
         Job job;
@@ -106,6 +121,10 @@ void AssemblyLine::workerThread(int id)
             lock.unlock();
         } 
     }
+
+    std::lock_guard<std::mutex> lock(mtx);
+    dead[id] = true;
+    thread_is_dead.notify_one();
 }
 
 // Public
@@ -114,13 +133,15 @@ AssemblyLine::AssemblyLine()
     int numOfThreads = std::thread::hardware_concurrency();
 
     async_flag = true;
+    kill_threads = false;
     
-    for (int i = 0; i < numOfThreads - 1; i++)
+    for (int i = 0; i < numOfThreads; i++)
     {
         std::thread worker(&AssemblyLine::workerThread, this, i);
 
         sleeping.push_back(false);
         is_async.push_back(true);
+        dead.push_back(false);
         worker.detach();
     }
 }
@@ -128,6 +149,7 @@ AssemblyLine::AssemblyLine()
 AssemblyLine::AssemblyLine(int threads)
 {
     async_flag = true;
+    kill_threads = false;
 
     for (int i = 0; i < threads; i++)
     {
@@ -135,6 +157,7 @@ AssemblyLine::AssemblyLine(int threads)
         
         sleeping.push_back(false);
         is_async.push_back(true);
+        dead.push_back(false);
         worker.detach();
     }
 }
@@ -261,98 +284,82 @@ int AssemblyLine::LaunchAsyncQueue()
     return activeAsyncQueue.size();
 }
 
-// void AssemblyLine::Wait()
+void AssemblyLine::WaitAll()
+{
+    std::unique_lock<std::mutex> lock(mtx);
+
+    thread_is_async.wait(lock, [&] {
+        for (size_t i = 0; i < is_async.size(); i++)
+        {
+            if (!is_async[i])
+            {
+                return false;
+            }
+        }
+
+        if (activeQueue.empty() && activeAsyncQueue.empty())
+        {
+            bool threads_sleeping = true;
+            for (size_t i = 0; i < sleeping.size(); i++)
+            {
+                if (!sleeping[i])
+                {
+                    threads_sleeping = false;
+                    break;
+                }
+            }
+
+            if (threads_sleeping)
+            {
+                return true;
+            }
+            return false;
+        }
+        return false;
+    });
+}
+
+// void AssemblyLine::killThreads()
 // {
 //     std::unique_lock<std::mutex> lock(mtx);
 
-//     int threads = thread_alive.size();
+//     kill_threads = true;
 
-//     jobs_done.wait(lock, [&] {
-//         for (size_t i = 0; i < threads; i++)
+//     thread_wake.notify_all();
+
+//     thread_is_dead.wait(lock, [&] {
+//         for (size_t i = 0; i < dead.size(); i++)
 //         {
-//             if (!sleeping[i]) 
+//             if (!dead[i])
 //             {
 //                 return false;
 //             }
-//         }
 
-//         if (activeQueue.size() == 0)
-//         {
-//             return true;
-//         }
-//         else
-//         {
-//             return false;
-//         }
-//     });
-
-//     for (size_t i = 0; i < threads; i++)
-//     {
-//         thread_alive[i] = false;
-//     }
-
-//     endTime = Clock::now();
-// }
-
-// int AssemblyLine::Pause()
-// {
-//     std::unique_lock<std::mutex> lock(mtx);
-
-//     int threads = thread_alive.size();
-
-//     threads_alive.wait(lock, [&] {
-//         for (size_t i = 0; i < threads; i++)
-//         {
-//             if (!thread_alive[i]) 
-//             {
-//                 return false;
-//             }
 //         }
 
 //         return true;
 //     });
-
-//     pause_flag = true;
-    
-//     pause_done.wait(lock, [&] {
-//         for (size_t i = 0; i < threads; i++)
-//         {
-//             if (!sleeping[i]) 
-//             {
-//                 return false;
-//             }
-//         }
-
-//         return true;
-//     });
-
-//     // Save the async queue back to the buffer
-//     asyncBufferQueue.insert(
-//         asyncBufferQueue.end(),
-//         activeQueue.begin(),
-//         activeQueue.end()
-//     );
-
-//     // Clear the queue to stop all threads
-//     activeQueue.clear();
-
-//     for (size_t i = 0; i < threads; i++)
-//     {
-//         thread_alive[i] = false;
-//     }
-
-//     pause_flag = false;
-//     return asyncBufferQueue.size();
 // }
 
-// int AssemblyLine::GetSpeed()
-// {
-//     Milli duration = endTime - startTime;
-
-//     return duration.count();
-// }
 
 AssemblyLine::~AssemblyLine()
 {
-    
+    std::unique_lock<std::mutex> lock(mtx);
+
+    kill_threads = true;
+
+    thread_wake.notify_all();
+
+    thread_is_dead.wait(lock, [&] {
+        for (size_t i = 0; i < dead.size(); i++)
+        {
+            if (!dead[i])
+            {
+                return false;
+            }
+
+        }
+
+        return true;
+    });
 }
