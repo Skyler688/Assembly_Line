@@ -24,7 +24,7 @@ public:
     void LaunchQueue();
     void LaunchAsyncQueue();
     void Wait();
-    void Pause();
+    int Pause();
     int GetSpeed();
     
     ~AssemblyLine();
@@ -42,6 +42,7 @@ private:
     std::vector<Job> asyncBufferQueue;
 
     std::vector<bool> sleeping;
+    std::vector<bool> thread_alive;
 
     std::vector<std::vector<Task>> assemblyLines;
 
@@ -50,6 +51,8 @@ private:
     std::mutex mtx;
     std::condition_variable thread_wake;
     std::condition_variable jobs_done;
+    std::condition_variable pause_done;
+    std::condition_variable threads_alive;
 
     using Clock = std::chrono::steady_clock;
     using TimePoint = Clock::time_point;
@@ -57,4 +60,6 @@ private:
 
     TimePoint startTime;
     TimePoint endTime;
+
+    bool pause_flag;
 };
