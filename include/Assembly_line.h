@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <vector>
+#include <deque>
 #include <printf.h>
 #include <thread>
 #include <any>
@@ -39,27 +40,29 @@ private:
 
     std::vector<std::thread> workers;
 
+    std::vector<std::vector<Task>> assemblyLines;
+
     struct Job
     {
         std::any data;
         int taskIndex;
-        int lineID;
+        int lineID; // assemblyLines index
         int jobLength;
     };
 
-    std::vector<Job> activeQueue;
-    std::vector<Job> activeAsyncQueue;
-    std::vector<Job> bufferQueue; 
-    std::vector<Job> asyncBufferQueue;
+    // The deque data type allows for O(1) insertion and deletion from both ends, a vector would require shifting every element leading to O(N).
+    std::deque<Job> activeQueue;
+    std::deque<Job> activeAsyncQueue;
+    std::deque<Job> bufferQueue; 
+    std::deque<Job> asyncBufferQueue;
 
     bool async_flag;
     bool kill_threads;
 
+    // Using vector because compile time size is unknown and requires access by index.
     std::vector<bool> sleeping;
     std::vector<bool> is_async;
     std::vector<bool> dead;
-
-    std::vector<std::vector<Task>> assemblyLines;
 
     std::mutex mtx; 
 

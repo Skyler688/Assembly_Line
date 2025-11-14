@@ -71,15 +71,15 @@ void AssemblyLine::workerThread(int id)
 
         if (!local_async_flag)
         {
-            job = activeQueue.back();
+            job = activeQueue.front();
             // printf("sync\n");
-            activeQueue.pop_back();
+            activeQueue.pop_front();
         }
         else
         {
-            job = activeAsyncQueue.back();
+            job = activeAsyncQueue.front();
             // printf("async\n");
-            activeAsyncQueue.pop_back();
+            activeAsyncQueue.pop_front();
         }
 
         Task task = assemblyLines[job.lineID][job.taskIndex];
@@ -105,11 +105,11 @@ void AssemblyLine::workerThread(int id)
             lock.lock();
             if (!local_async_flag) // using a local flag collected during job selection to prevent adding job to wrong buffer.
             {
-                activeQueue.push_back(nextJob);
+                activeQueue.push_front(nextJob); // adding to the front of the queue to fallow FIFO "first in first out".
             }
             else
             {
-                activeAsyncQueue.push_back(nextJob);
+                activeAsyncQueue.push_front(nextJob);
             }
             
             // Given the potential variation in tasks within each assembly line it could cause the queue to become temperarlly empty,
@@ -177,7 +177,7 @@ void AssemblyLine::AddToBuffer(int assemblyLineID, std::any data)
     job.taskIndex = 0;
     job.jobLength = assemblyLines[assemblyLineID].size();
 
-    bufferQueue.push_back(job);
+    bufferQueue.push_back(job); // add jobs to the back of the queue to fallow FIFO "first in first out"
 }
 
 void AssemblyLine::AddToAsyncBuffer(int assemblyLineID, std::any data)
@@ -257,8 +257,8 @@ int AssemblyLine::LaunchAsyncQueue()
     {
         activeAsyncQueue.insert(
             activeAsyncQueue.end(),
-            asyncBufferQueue.begin(),
-            asyncBufferQueue.end()
+            asyncBufferQueue.begin(), 
+            asyncBufferQueue.end() 
         );
         
         asyncBufferQueue.clear();
