@@ -28,11 +28,16 @@ public:
     int LaunchAsyncQueue();
     void WaitAll();
 
+    void StartTime();
+    long long EndTime();
+
     ~AssemblyLine();
     
 private:
     void workerThread(int id);
-    // void killThreads();
+    void waitForWorkersToDie();
+
+    std::vector<std::thread> workers;
 
     struct Job
     {
@@ -63,7 +68,10 @@ private:
     std::condition_variable thread_is_dead;
 
     // will be used for extra features latter.
-    using Clock = std::chrono::steady_clock;
+    using Clock = std::chrono::high_resolution_clock;
     using TimePoint = Clock::time_point;
-    using Milli = std::chrono::duration<double, std::milli>; // creating a millisecond type.
+    using Micro = std::chrono::duration<double, std::micro>; // creating a microseconds type.
+
+    TimePoint start_time;
+    TimePoint end_time;
 };

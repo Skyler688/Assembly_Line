@@ -3,21 +3,18 @@
 #include <string>
 // #include <iostream>
 
-std::vector<Task> assemblyLine;
 
-void test()
+void test(int threads)
 {
-    AssemblyLine line(25);
+    std::vector<Task> assemblyLine;
+    AssemblyLine line(threads);
     
     // Simulated heavy functions of variable workloads.
     Task task_1 = [](std::any &data, int id)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
-        for (int i = 0; i < 2000000; i++) {
-            test += 0.1;
-        }
-        for (int i = 0; i < 2000000; i++) {
+        for (int i = 0; i < 200000; i++) {
             test += 0.1;
         }
         
@@ -35,7 +32,7 @@ void test()
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
-        for (int i = 0; i < 400; i++) {
+        for (int i = 0; i < 200; i++) {
             test += 0.1;
         }
         // for (int i = 0; i < 2000000; i++) {
@@ -93,36 +90,52 @@ void test()
         line.AddToAsyncBuffer(lineID, i);
     }
     
+    line.StartTime();
+    for (int i = 0; i < 50; i++)
+    {
+        line.AddToBuffer(lineID, i); 
+    }
+
+    int sync = line.LaunchQueue();
+    // printf("\nsync queue: %d\n\n", sync);
+
     while (true)
     {
-        for (int i = 0; i < 30; i++)
+        for (int i = 0; i < 50; i++)
         {
             line.AddToBuffer(lineID, i); 
         }
-                
+        
         int size = line.LaunchAsyncQueue(); // must wait for normal queue to finish before using async
-        printf("async queue: %d\n", size);
+        // printf("async queue: %d\n", size);
         
         
         int sync = line.LaunchQueue();
-        printf("\nsync queue: %d\n\n", sync);
-
+        // printf("\nsync queue: %d\n\n", sync);
+        
         if (size == 0) {
-            printf("\n\n");
+            // printf("\n");
             break;
         }
     }
-    
-    printf("Done\n");
+    long long microseconds = line.EndTime();
+
+    printf("Job duration: %lld\n", microseconds);
+    // printf("Done\n\n");
 }
 
 int main() 
 {
+    int hardware_threads = hardwareThreads();
 
-    printf("hardware_threads: %d\n", hardwareThreads());
-    for (size_t i = 0; i < 100; i++)
+    for (size_t i = 0; i < 30; i++)
     {
-        test();
+        test(22);
+        // printf("\nThreads: %zu\n", i + 1);
+        // for (size_t a = 0; a < 3; a++)
+        // {
+        // }
+        // hardware_threads++;
     }
 
     return 0;

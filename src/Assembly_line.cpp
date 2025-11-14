@@ -2,8 +2,7 @@
 
 int hardwareThreads()
 {
-    int num_of_threads = std::thread::hardware_concurrency();
-    return num_of_threads;
+    return std::thread::hardware_concurrency();
 }
 
 // Private
@@ -137,29 +136,31 @@ AssemblyLine::AssemblyLine()
     
     for (int i = 0; i < numOfThreads; i++)
     {
-        std::thread worker(&AssemblyLine::workerThread, this, i);
-
         sleeping.push_back(false);
         is_async.push_back(true);
         dead.push_back(false);
-        worker.detach();
+
+        std::thread worker(&AssemblyLine::workerThread, this, i);
+        workers.push_back(std::move(worker));
     }
 }
 
 AssemblyLine::AssemblyLine(int threads)
 {
+    // printf("Creating workers\n");
     async_flag = true;
     kill_threads = false;
 
     for (int i = 0; i < threads; i++)
     {
-        std::thread worker(&AssemblyLine::workerThread, this, i);
-        
         sleeping.push_back(false);
         is_async.push_back(true);
         dead.push_back(false);
-        worker.detach();
+
+        std::thread worker(&AssemblyLine::workerThread, this, i);
+        workers.push_back(std::move(worker));
     }
+    // printf("Workers created\n");
 }
 
 int AssemblyLine::CreateAssemblyLine(std::vector<Task> assemblyLine)
@@ -319,30 +320,21 @@ void AssemblyLine::WaitAll()
     });
 }
 
-// void AssemblyLine::killThreads()
-// {
-//     std::unique_lock<std::mutex> lock(mtx);
+void AssemblyLine::StartTime()
+{
+    start_time = Clock::now();
+}
 
-//     kill_threads = true;
+long long AssemblyLine::EndTime()
+{
+    end_time = Clock::now();
 
-//     thread_wake.notify_all();
+    auto duration = end_time - start_time;
 
-//     thread_is_dead.wait(lock, [&] {
-//         for (size_t i = 0; i < dead.size(); i++)
-//         {
-//             if (!dead[i])
-//             {
-//                 return false;
-//             }
+    return std::chrono::duration_cast<Micro>(duration).count();
+}
 
-//         }
-
-//         return true;
-//     });
-// }
-
-
-AssemblyLine::~AssemblyLine()
+void AssemblyLine::waitForWorkersToDie()
 {
     std::unique_lock<std::mutex> lock(mtx);
 
@@ -357,9 +349,19 @@ AssemblyLine::~AssemblyLine()
             {
                 return false;
             }
-
         }
 
         return true;
     });
+}
+
+AssemblyLine::~AssemblyLine()
+{
+    waitForWorkersToDie();
+    for (size_t i = 0; i < workers.size(); i++) {
+        if (workers[i].joinable())
+        {
+            workers[i].join();
+        }
+    }
 }
