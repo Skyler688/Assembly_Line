@@ -1,10 +1,10 @@
-#include "Assembly_line.h"
+#include "AssemblyLine.h"
 #include <printf.h>
 #include <string>
 // #include <iostream>
 
 
-long long test(int threads)
+void test(int threads)
 {
     std::vector<Task> assemblyLine;
     AssemblyLine line(threads);
@@ -122,6 +122,7 @@ long long test(int threads)
     using DataChunk = std::vector<char>; 
     using Task = std::function<void(std::any&, int)>; 
 
+    // GOOGLE GEMINIE GENERATED TEST
     // --- Pipeline Setup ---
     // NOTE: Use a large size (e.g., 4MB) to ensure cache impact
     const size_t LARGE_DATA_SIZE = 4 * 1024 * 1024; // 4 MB
@@ -196,75 +197,41 @@ long long test(int threads)
 
     int piplineID = line.CreateAssemblyLine(assemblyLine);
 
-    for (int i = 0; i < 30; i++)
-    {
-        line.AddToAsyncBuffer(piplineID, NULL);
-        line.AddToAsyncBuffer(lineID, i);
-    }
-    
-    line.StartTime();
-    // for (int i = 0; i < 50; i++)
-    // {
-    //     line.AddToBuffer(lineID, i); 
-    //     std::string hello = "hello";
-    //     line.AddToBuffer(testID, hello);
-    // }
+    std::string hello = "hello";
 
-    // int sync = line.LaunchQueue();
-    // // printf("\nsync queue: %d\n\n", sync);
+    for (int i = 0; i < 300000; i++)
+    {
+        // line.AddToAsyncBuffer(piplineID, NULL);
+        line.AddToAsyncBuffer(lineID, i);
+        line.AddToAsyncBuffer(testID, hello);
+    }
 
     while (true)
     {
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < 50; i++)
         {
             line.AddToBuffer(lineID, i); 
-            std::string hello = "hello";
             line.AddToBuffer(testID, hello);
         }
-        int sync = line.LaunchQueue(); // this will wait until all threads are async and the sync queue is empty.
         
+        line.LaunchQueue(); // this will wait until all threads are async and the sync queue is empty.
         int size = line.LaunchAsyncQueue(); // this will add to the async queue but will wait to run it until the sync queue is done.
-        // printf("async size: %d\n", size);
-        
-        // how should i handle the returned data if returning anything back to main?
-        // i would need to block until the sync queue is done to grab the returned data.
-        // for async just grab whatever is avalable? or wait until a batch is done? this would requre the async to be grouped into batches.
-        // async exicution should not be blocked in any way just aquire a mutex and read the available data.
-        // async should be first in first out like a line to insure that the first added 
-        
+
         std::this_thread::sleep_for(std::chrono::milliseconds(8)); // allow the async a bit of time to run.
         
-        // printf("\nsync queue: %d\n\n", sync);
-
+        // printf("size: %d\n", size);
         if (size == 0) {
-            // printf("\n");
             break;
         }
-    }
-    long long microseconds = line.EndTime();
 
-    return microseconds;
-    // printf("Job duration: %lld\n", microseconds);
-    // printf("Done\n\n");
+        // printf("Loop Done\n");
+    }
+    printf("Done Done\n");
 }
 
 int main() 
 {
-    int hardware_threads = hardwareThreads();
-    for (size_t i = 0; i < 30; i++)
-    {
-        printf("\nThreads: %d\n", hardware_threads);
-        for (size_t i = 0; i < 3; i++)
-        {
-            long long average = 0;
-            for (size_t a = 0; a < 6; a++)
-            {
-                average += test(hardware_threads);
-            }
-            printf("Average: %lld\n", average / 6);
-        }
-        hardware_threads++;
-    }
+    test(18);
 
     return 0;
 }

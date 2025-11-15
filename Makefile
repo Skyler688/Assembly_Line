@@ -9,8 +9,8 @@ create:
 
 build: create
 	g++ src/main.cpp -I include ${VERSION} -c -o build/main.o 
-	g++ src/Assembly_line.cpp -I include ${VERSION} -c -o build/Assembly_line.o 
-	g++ build/main.o build/Assembly_line.o -obuild/main
+	g++ src/AssemblyLine.cpp -I include ${VERSION} -c -o build/AssemblyLine.o 
+	g++ build/main.o build/AssemblyLine.o -obuild/main
 
 run: create build
 	./build/main
