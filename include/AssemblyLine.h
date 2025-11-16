@@ -1,7 +1,6 @@
 #pragma once
 
 // #include <printf.h>
-
 #include <functional>
 #include <vector>
 #include <deque>
@@ -12,7 +11,19 @@
 #include <condition_variable>
 
 // This is the data type used to create the assemblyLines.
-using Task = std::function<void(std::any &data, int id)>;
+using Task = std::function<void(std::any &data)>;
+
+struct Result
+{
+    int size;
+    std::vector<std::any> data;
+
+    // Explicit default constructor
+    Result() : size(0), data({}) {}
+};
+
+using SyncResults = std::vector<Result>;
+using AsyncResults = std::vector<Result>;
 
 int hardwareThreads();
 
@@ -22,22 +33,28 @@ public:
     AssemblyLine();
     AssemblyLine(int threads);
 
-    int CreateAssemblyLine(std::vector<Task> assembly_line);
+    int CreateAssemblyLine(const std::vector<Task> &assembly_line);
     void AddToBuffer(int assembly_line_id, std::any data);
     void AddToAsyncBuffer(int assembly_line_id, std::any data);
-    void LaunchQueue();
-    int LaunchAsyncQueue();
+    void LaunchQueue(SyncResults &results);
+    int LaunchAsyncQueue(AsyncResults &results);
     // void WaitAll(); // change to wait for async, can be usfull in the event of async task neading to be done by sertain time.
 
     ~AssemblyLine();
     
 private:
-    void workerThread(int id);
+    void workerThread();
     void waitForWorkersToDie();
 
-    std::vector<std::thread> workers;
+    // Helpers
+    void wakeSleepingThreads();
 
+    // Worker thread list, used in the deconstructor to join threads.
+    std::vector<std::thread> workers; 
+    
+    // The list of functions that make up an assembly line.
     std::vector<std::vector<Task>> assembly_lines;
+    int assembly_line_count; // Used to track the total assembly lines without needing to use a mutex lock.
 
     // The structure used in the queue's
     struct Job
@@ -67,4 +84,7 @@ private:
     std::condition_variable thread_wake;
     std::condition_variable thread_is_async;
     std::condition_variable thread_is_dead;
+
+    SyncResults sync_results;
+    AsyncResults async_results;
 };

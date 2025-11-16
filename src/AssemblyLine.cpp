@@ -1,12 +1,32 @@
 #include "AssemblyLine.h"
 
-// Not a class function
+#include <stdexcept>
+
+#define THROW_RUNTIME_ERROR(msg) \
+    throw std::runtime_error(std::string(msg) + "[" + __FILE__ + ": " + "LINE-" + std::to_string(__LINE__) + "]")
+
+// Not a class function ment to be accessible before the class is created.
 int hardwareThreads()
 {
     return std::thread::hardware_concurrency();
 }
 
+// ----------- Helpers -----------
+void AssemblyLine::wakeSleepingThreads()
+{
+    if (threads_sleeping == 1)
+    {
+        thread_wake.notify_one();
+    }  
+    else if (threads_sleeping <= thread_count)
+    {
+        thread_wake.notify_all();
+    }
+}
+
 // ----------- Public ------------
+
+// Default constructor
 AssemblyLine::AssemblyLine()
 {
     int num_of_threads = std::thread::hardware_concurrency();
@@ -24,11 +44,12 @@ AssemblyLine::AssemblyLine()
     //  This may not be the case on some machines and will require further testing to gather data.
     for (int i = 0; i < thread_count; i++)
     {
-        std::thread worker(&AssemblyLine::workerThread, this, i);
+        std::thread worker(&AssemblyLine::workerThread, this);
         workers.push_back(std::move(worker)); // moved into a list so they can be joined in the deconstructor.
     }
 }
 
+// Manual constructor
 AssemblyLine::AssemblyLine(int threads)
 {
     kill_threads = false;
@@ -40,17 +61,24 @@ AssemblyLine::AssemblyLine(int threads)
 
     for (int i = 0; i < threads; i++)
     {
-        std::thread worker(&AssemblyLine::workerThread, this, i);
+        std::thread worker(&AssemblyLine::workerThread, this);
         workers.push_back(std::move(worker));
     }
 }
 
-int AssemblyLine::CreateAssemblyLine(std::vector<Task> assembly_line)
+int AssemblyLine::CreateAssemblyLine(const std::vector<Task> &assembly_line)
 {
+    std::lock_guard<std::mutex> lock(mtx);
+
+    Result result;
+    sync_results.push_back(result);
+    async_results.push_back(result);
     assembly_lines.push_back(assembly_line);
+    assembly_line_count++;
     return assembly_lines.size() - 1; // Return the assembly lines index
 }
 
+// NOTE -> No locks are needed for adding to buffers.
 void AssemblyLine::AddToBuffer(int assembly_line_id, std::any data)
 {
     Job job;
@@ -73,8 +101,20 @@ void AssemblyLine::AddToAsyncBuffer(int assembly_line_id, std::any data)
     async_buffer.push_back(job);
 }
 
-void AssemblyLine::LaunchQueue() //TODO -> pass a return list by reference.
+void AssemblyLine::LaunchQueue(SyncResults &results)
 {    
+    if (!results.empty())
+    {
+        THROW_RUNTIME_ERROR("ERROR-> void AssemblyLine::LaunchQueue(SyncResults &results), results must be an empty.");
+    }
+
+    // Creating a list of defaults for each assembly line before the lock to avoid wasting mutex lock time.
+    // The passed results is swapped with the actual results, needs to have a reset default for each assembly line. 
+    for (size_t i = 0; i < assembly_line_count; i++) {
+        Result default_result;
+        results.push_back(default_result);
+    }
+
     std::unique_lock<std::mutex> lock(mtx); 
 
     // .swap() is much faster than .insert() and can be done because the sync_queue is guaranteed to be empty upon calling this method.
@@ -82,14 +122,7 @@ void AssemblyLine::LaunchQueue() //TODO -> pass a return list by reference.
 
     // NOTE -> no need to clear the buffer as it has bean swapped with an empty deque.
 
-    if (threads_sleeping == 1)
-    {
-        thread_wake.notify_one();
-    }  
-    else if (threads_sleeping <= thread_count)
-    {
-        thread_wake.notify_all();
-    }
+    wakeSleepingThreads();
 
     // Wait for sync jobs to finish.
     thread_is_async.wait(lock, [&] {
@@ -100,10 +133,22 @@ void AssemblyLine::LaunchQueue() //TODO -> pass a return list by reference.
 
         return false;
     });
+
+    results.swap(sync_results);  
 }
 
-int AssemblyLine::LaunchAsyncQueue() // TODO -> pass a return list by reference.
+int AssemblyLine::LaunchAsyncQueue(AsyncResults &results)
 {
+    if (!results.empty())
+    {
+        THROW_RUNTIME_ERROR("ERROR-> int AssemblyLine::LaunchAsyncQueue(SyncResults &results), results must be empty.");
+    }
+
+    for (size_t i = 0; i < assembly_line_count; i++) {
+        Result default_result;
+        results.push_back(default_result);
+    }
+
     std::lock_guard<std::mutex> lock(mtx);
 
     if (!async_buffer.empty())
@@ -120,15 +165,10 @@ int AssemblyLine::LaunchAsyncQueue() // TODO -> pass a return list by reference.
 
     if (!async_queue.empty())
     {
-        if (threads_sleeping == 1)
-        {
-            thread_wake.notify_one();
-        }
-        else if (threads_sleeping <= thread_count)
-        {
-            thread_wake.notify_all();
-        }
+        wakeSleepingThreads();
     }
+
+    results.swap(async_results);
 
     return async_queue.size();
 }
@@ -138,6 +178,7 @@ AssemblyLine::~AssemblyLine()
 {
     waitForWorkersToDie();
 
+    // Join threads
     for (size_t i = 0; i < thread_count; i++) {
         if (workers[i].joinable())
         {
@@ -151,11 +192,12 @@ void AssemblyLine::waitForWorkersToDie()
 {
     std::unique_lock<std::mutex> lock(mtx);
 
+    // Flag used to break the worker threads wile loop so they can be joined.
     kill_threads = true;
 
-    thread_wake.notify_all(); // incase any threads are sleeping
+    wakeSleepingThreads();
 
-    // Waits for all threads to break ther wile loop so they can be joined.
+    // Waits for all threads to break ther wile loop.
     thread_is_dead.wait(lock, [&] { 
         if (threads_dead == thread_count)
         {
@@ -167,12 +209,11 @@ void AssemblyLine::waitForWorkersToDie()
 }
 
 // This is the code that runs on each thread of the thead pool.
-
 // IMPORTANT NOTES -> 
 //  The threads use cooperative yielding to avoid any cpu idle time during transitions from sync and async.
 //  The sync_queue has priority in this system and will run until empty before using the async_queue.
-//  The passed id is used to identify individual threads in the flag lists.
-void AssemblyLine::workerThread(int id)
+//  Int flags are used to share the state of each worker thread to the main thread.
+void AssemblyLine::workerThread()
 {
     bool is_async = false;
     bool sleeping = false;
@@ -180,7 +221,6 @@ void AssemblyLine::workerThread(int id)
     while (true)
     {
         std::unique_lock<std::mutex> lock(mtx);
-
 
         // Will wait "sleep" once both queue's are empty.
         thread_wake.wait(lock, [&] {
@@ -258,7 +298,7 @@ void AssemblyLine::workerThread(int id)
         }
 
         Task task = assembly_lines[job.line_id][job.task_index]; // Grabbing the actual function
-        std::any job_data = job.data; // Grab the data to be passed into the function
+        std::any job_data = job.data;
         
         lock.unlock(); // Unlock the mutex. 
 
@@ -266,7 +306,7 @@ void AssemblyLine::workerThread(int id)
         // NOTE -> 
         //  job_data is passed by reference so no need to return anything. 
         //  This is more efficient in the event of larger peaces of data being passed.
-        task(job_data, id);
+        task(job_data);
 
         // If there is a next job in the assembly line add it to the front of the respective queue.
         if (job.job_length - 1 > job.task_index)
@@ -296,12 +336,24 @@ void AssemblyLine::workerThread(int id)
             //  leading to cpu idle time. From my testing this dose indead bring threads back in this event,
             //  preventing threads from being put to sleep to soon.
             thread_wake.notify_one(); 
-            lock.unlock();
         } 
         else
         {
             // TODO -> add finish data to a list that can be accessed by the main thread. can be used for status report or returning processed data.
+            lock.lock();
+
+            if (!is_async)
+            {
+                sync_results[job.line_id].data.push_back(job_data);
+                sync_results[job.line_id].size++;
+            }
+            else
+            {
+                async_results[job.line_id].data.push_back(job_data);
+                async_results[job.line_id].size++;
+            }
         }
+        lock.unlock();
     }
 
     std::lock_guard<std::mutex> lock(mtx);
