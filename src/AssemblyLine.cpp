@@ -1,11 +1,5 @@
 #include "AssemblyLine.h"
 
-// #include <printf.h>
-#include <stdexcept>
-
-#define THROW_RUNTIME_ERROR(msg) \
-    throw std::runtime_error(std::string(msg) + "[" + __FILE__ + ": " + "LINE-" + std::to_string(__LINE__) + "]")
-
 // Not a class function ment to be accessible before the class is created to grab the number of hardware threads.
 int hardwareThreads()
 {
@@ -69,7 +63,7 @@ AssemblyLine::AssemblyLine(int threads)
 
 int AssemblyLine::CreateAssemblyLine(std::vector<Task> &assembly_line)
 {
-    std::lock_guard<std::mutex> lock(mtx);
+    std::lock_guard<std::mutex> lock(mtx); // locking just incase user adds assembly lines after queue launch.
 
     Result result;
     sync_results.push_back(result);
@@ -78,11 +72,11 @@ int AssemblyLine::CreateAssemblyLine(std::vector<Task> &assembly_line)
     assembly_line_count++;
     Tasks empty;
     assembly_line.swap(empty);
-    return assembly_lines.size() - 1; // Return the assembly lines index
+    return assembly_lines.size() - 1; // Return the assembly lines index "ID"
 }
 
 // NOTE -> No locks are needed for adding to buffers.
-void AssemblyLine::AddToBuffer(int assembly_line_id, std::any data)
+void AssemblyLine::AddToBuffer(int assembly_line_id, const std::any &data)
 {
     Job job;
     job.data = data;
@@ -90,10 +84,10 @@ void AssemblyLine::AddToBuffer(int assembly_line_id, std::any data)
     job.task_index = 0;
     job.job_length = assembly_lines[assembly_line_id].size();
 
-    sync_buffer.push_back(job); // add jobs to the back of the queue to fallow FIFO "first in first out"
+    sync_buffer.push_back(job); // add jobs to the back of the queue fallowing FIFO "first in first out"
 }
 
-void AssemblyLine::AddToAsyncBuffer(int assembly_line_id, std::any data)
+void AssemblyLine::AddToAsyncBuffer(int assembly_line_id, const std::any &data)
 {
     Job job;
     job.data = data;
@@ -109,7 +103,7 @@ void AssemblyLine::LaunchQueue(SyncResults &results)
     // If the passed results are not empty go ahead and empty it.
     if (!results.empty())
     {
-        SyncResults().swap(results);
+        SyncResults().swap(results); // using swap() for efficiency over clear().
     }
 
     // Creating a list of defaults for each assembly line before the lock to avoid wasting mutex lock time.
@@ -138,6 +132,7 @@ void AssemblyLine::LaunchQueue(SyncResults &results)
         return false;
     });
 
+    // After waiting update the results.
     results.swap(sync_results);  
 }
 
@@ -157,6 +152,7 @@ int AssemblyLine::LaunchAsyncQueue(AsyncResults &results)
 
     if (!async_buffer.empty())
     {
+        // Cannot use swap() for the async buffer as new jobs may be added before the queue is empty.
         async_queue.insert(
             async_queue.end(),
             std::make_move_iterator(async_buffer.begin()), // make_move_iterator() makes the insert much more efficient.
@@ -212,7 +208,8 @@ void AssemblyLine::waitForWorkersToDie()
     });
 }
 
-// This is the code that runs on each thread of the thead pool.
+// -------------- WORKER THREAD CODE --------------
+
 // IMPORTANT NOTES -> 
 //  The threads use cooperative yielding to avoid any cpu idle time during transitions from sync and async.
 //  The sync_queue has priority in this system and will run until empty before using the async_queue.
@@ -301,32 +298,33 @@ void AssemblyLine::workerThread()
             async_queue.pop_front();
         }
 
-        Task task = assembly_lines[job.line_id][job.task_index]; // Grabbing the actual function
+        Task task = assembly_lines[job.line_id][job.task_index]; // Grabbing the actual function from the assembly_lines.
         
         lock.unlock(); // Unlock the mutex. 
 
-        // Run the grabbed function.
-        // NOTE -> 
-        //  job_data is passed by reference so no need to return anything. 
-        //  This is more efficient in the event of larger peaces of data being passed.;
         task(job.data);
 
+        // NOTE -> 
+        //  job.data is passed by reference so no need to return anything. 
+        //  This is more efficient in the event of larger peaces of data being passed.
+
+        // Check if an error was passed.
         if (job.data.type() == typeid(TaskError))
         {
-            // If an error is reported in any task creat a Task error and ad it to the returned data.
-            TaskError error = std::any_cast<TaskError>(job.data);
+            // If an error is reported in any task cast a mutable reference.
+            TaskError &error = std::any_cast<TaskError&>(job.data);
             error.task_index = job.task_index;
 
             lock.lock();
 
             if (!is_async)
             {
-                sync_results[job.line_id].data.push_back(error);
+                sync_results[job.line_id].data.push_back(job.data); // NOTE -> push_back() will create its own copy of the passed data so you can pass a reference.
                 sync_results[job.line_id].length++;
             }
             else
             {
-                async_results[job.line_id].data.push_back(error);
+                async_results[job.line_id].data.push_back(job.data);
                 async_results[job.line_id].length++;
             }
 
@@ -337,11 +335,8 @@ void AssemblyLine::workerThread()
             // If there is a next job in the assembly line add it to the front of the respective queue.
             if (job.job_length - 1 > job.task_index)
             {
-                Job nextJob;
-                nextJob.task_index = job.task_index + 1;
-                nextJob.data = job.data; // Make sure to replace the passed data with new data.
-                nextJob.line_id = job.line_id;
-                nextJob.job_length = job.job_length;
+                // NOTE -> the job.data has already bean modified by the task function, and both the line_id and job length remain the same.
+                job.task_index++;
     
                 // Must lock the mutex again before accessing a queue
                 lock.lock();
@@ -349,11 +344,11 @@ void AssemblyLine::workerThread()
                 // NOTE -> Adding the next job to the front of the queue to fallow FIFO "first in first out".
                 if (!is_async) 
                 {
-                    sync_queue.push_front(nextJob); 
+                    sync_queue.push_front(job); 
                 }
                 else
                 {
-                    async_queue.push_front(nextJob);
+                    async_queue.push_front(job);
                 }
     
                 //NOTE -> 
@@ -365,7 +360,7 @@ void AssemblyLine::workerThread()
             } 
             else
             {
-                // TODO -> add finish data to a list that can be accessed by the main thread. can be used for status report or returning processed data.
+                // If there is not next job copy over the resulting data into the results.
                 lock.lock();
     
                 if (!is_async)

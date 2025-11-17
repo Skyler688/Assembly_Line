@@ -75,12 +75,12 @@ int assembly_line_id = assembly_line_instance.CreateAssemblyLine(assembly_line);
 
 // The above example showcases how the any data type is passed down the assembly line.
 // However in real applications we are almost always going to be using much larger and more complex data types.
-// In this case it is best to cast the data by reference.
+// In this case it is best to cast the data by mutable reference.
 Task example_task = [](std::any &data)
 {
     // Lets pretend we have a struct called LargeData and don't want to create any copy's of it to save on memory usage.
-    // Casting the data by reference
-    LargeData large_data = std::any_cast<LargeData&>(data);
+    // Casting the data by mutable reference
+    LargeData &large_data = std::any_cast<LargeData&>(data);
 
     // Now we can modify and interact with the original data.
     large_data.example = "New data";

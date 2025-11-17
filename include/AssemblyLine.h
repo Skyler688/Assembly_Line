@@ -41,11 +41,10 @@ public:
     AssemblyLine(int threads);
 
     int CreateAssemblyLine(std::vector<Task> &assembly_line);
-    void AddToBuffer(int assembly_line_id, std::any data);
-    void AddToAsyncBuffer(int assembly_line_id, std::any data);
+    void AddToBuffer(int assembly_line_id, const std::any &data);
+    void AddToAsyncBuffer(int assembly_line_id, const std::any &data);
     void LaunchQueue(SyncResults &results);
     int LaunchAsyncQueue(AsyncResults &results);
-    // void WaitAll(); // change to wait for async, can be usfull in the event of async task neading to be done by sertain time.
 
     ~AssemblyLine();
     
@@ -82,7 +81,7 @@ private:
 
     // Flags
     bool kill_threads;
-    int threads_sleeping; // Using vector because compile time size is unknown and requires access by index.
+    int threads_sleeping; // Using vector because compile time size is unknown and requires efficient access by index.
     int threads_async;
     int threads_dead;
 
