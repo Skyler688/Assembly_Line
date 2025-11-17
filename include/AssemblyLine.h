@@ -1,6 +1,5 @@
 #pragma once
 
-// #include <printf.h>
 #include <functional>
 #include <vector>
 #include <deque>
@@ -9,22 +8,30 @@
 #include <iostream>
 #include <mutex>
 #include <condition_variable>
+#include <typeinfo>
 
 // This is the data type used to create the assemblyLines.
 using Task = std::function<void(std::any &data)>;
+using Tasks = std::vector<Task>;
+
+struct TaskError {
+    int task_index;
+    std::string message;
+};
 
 struct Result
 {
-    int size;
+    int length;
     std::vector<std::any> data;
 
     // Explicit default constructor
-    Result() : size(0), data({}) {}
+    Result() : length(0), data({}) {}
 };
 
 using SyncResults = std::vector<Result>;
 using AsyncResults = std::vector<Result>;
 
+// Needs to be accessible  befor the class instance is constructed.
 int hardwareThreads();
 
 class AssemblyLine
@@ -33,7 +40,7 @@ public:
     AssemblyLine();
     AssemblyLine(int threads);
 
-    int CreateAssemblyLine(const std::vector<Task> &assembly_line);
+    int CreateAssemblyLine(std::vector<Task> &assembly_line);
     void AddToBuffer(int assembly_line_id, std::any data);
     void AddToAsyncBuffer(int assembly_line_id, std::any data);
     void LaunchQueue(SyncResults &results);
@@ -46,7 +53,7 @@ private:
     void workerThread();
     void waitForWorkersToDie();
 
-    // Helpers
+    // Helper
     void wakeSleepingThreads();
 
     // Worker thread list, used in the deconstructor to join threads.

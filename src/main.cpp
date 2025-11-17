@@ -3,12 +3,28 @@
 #include <string>
 // #include <iostream>
 
+void task(std::any &data)
+{
+    // std::cout << std::this_thread::get_id() << std::endl;
+    float test = 0.0;
+    for (int i = 0; i < 200000; i++) {
+        test += 0.1;
+    }
+    
+    // NOTE -> The data variable can be any data type. it is important to cast it as the correct type.
+    int num = std::any_cast<int>(data);
+    // printf("thread_%d: %d\n", id, num);
+
+    
+    data = test;
+}
 
 void test(int threads)
 {
     AssemblyLine line(threads);
 
-    std::vector<Task> assemblyLine;
+    Tasks assemblyLine;
+
     
     // Simulated heavy functions of variable workloads.
     Task task_1 = [](std::any &data)
@@ -42,10 +58,10 @@ void test(int threads)
         float num = std::any_cast<float>(data);
         // printf("thread_%d: %f\n", id, num);
     
-    
-        std::string message = "hello"; // Can change the data type as long as the next function in the line casts the new type correctly.
-    
-        data = message;
+        TaskError error;
+        error.message = "error";
+
+        data = std::string("hello");
     };
     
     assemblyLine.push_back(task_2);
@@ -61,9 +77,7 @@ void test(int threads)
         std::string message = std::any_cast<std::string>(data);
         // printf("thread_%d: %s\n", id, message.c_str());
     
-        float num = test;
-    
-        data = num;
+        data = float(5.739);
     };
     
     assemblyLine.push_back(task_3);
@@ -115,8 +129,7 @@ void test(int threads)
         int num = std::any_cast<int>(data);
         num *= 238;
 
-        std::string result = "job done";
-        data = result;
+        data = std::string("job done");
     };
 
     assemblyLine.push_back(test_2);
@@ -133,34 +146,41 @@ void test(int threads)
         line.AddToAsyncBuffer(lineID, i);
         // line.AddToAsyncBuffer(testID, hello);
     }
-
+    
+    SyncResults sync_results;
+    AsyncResults async_results;
     while (true)
     {
-        SyncResults sync_results;
-        AsyncResults async_results;
-
         for (int i = 0; i < 5; i++)
         {
             line.AddToBuffer(lineID, i); 
         }
         for (size_t i = 0; i < 8; i++)
         {
-            line.AddToBuffer(testID, hello);
+            line.AddToBuffer(testID, std::string("hello"));
         }
         
         line.LaunchQueue(sync_results); // this will wait until all threads are async and the sync queue is empty.
         int size = line.LaunchAsyncQueue(async_results); // this will add to the async queue but will wait to run it until the sync queue is done.
 
         
-        printf("sync results size: %zu\n", sync_results[testID].size);
-        printf("async results size: %zu\n", async_results[lineID].size);
+        printf("sync results size: %d\n", sync_results[testID].length);
+        printf("async results size: %d\n", async_results[lineID].length);
         
-        for (size_t i = 0; i < sync_results[lineID].size; i++)
+        for (size_t i = 0; i < sync_results[lineID].length; i++)
         {
-            float result = std::any_cast<float>(sync_results[lineID].data[i]);
-            printf("Sync Result: %f\n", result);
+            if (sync_results[lineID].data[i].type() == typeid(TaskError))
+            {
+                TaskError error = std::any_cast<TaskError>(sync_results[lineID].data[i]);
+                printf("%s: Task index -> %d\n", error.message.c_str(), error.task_index);
+            }
+            else
+            {
+                float result = std::any_cast<float>(sync_results[lineID].data[i]);
+                printf("Sync Result: %f\n", result);
+            }
         }
-        for (size_t i = 0; i < sync_results[testID].size; i++)
+        for (size_t i = 0; i < sync_results[testID].length; i++)
         {
             std::string result = std::any_cast<std::string>(sync_results[testID].data[i]);
             printf("Sync Result: %s\n", result.c_str());

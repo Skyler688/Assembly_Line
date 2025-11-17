@@ -1,11 +1,12 @@
 #include "AssemblyLine.h"
 
+// #include <printf.h>
 #include <stdexcept>
 
 #define THROW_RUNTIME_ERROR(msg) \
     throw std::runtime_error(std::string(msg) + "[" + __FILE__ + ": " + "LINE-" + std::to_string(__LINE__) + "]")
 
-// Not a class function ment to be accessible before the class is created.
+// Not a class function ment to be accessible before the class is created to grab the number of hardware threads.
 int hardwareThreads()
 {
     return std::thread::hardware_concurrency();
@@ -66,7 +67,7 @@ AssemblyLine::AssemblyLine(int threads)
     }
 }
 
-int AssemblyLine::CreateAssemblyLine(const std::vector<Task> &assembly_line)
+int AssemblyLine::CreateAssemblyLine(std::vector<Task> &assembly_line)
 {
     std::lock_guard<std::mutex> lock(mtx);
 
@@ -75,6 +76,8 @@ int AssemblyLine::CreateAssemblyLine(const std::vector<Task> &assembly_line)
     async_results.push_back(result);
     assembly_lines.push_back(assembly_line);
     assembly_line_count++;
+    Tasks empty;
+    assembly_line.swap(empty);
     return assembly_lines.size() - 1; // Return the assembly lines index
 }
 
@@ -103,9 +106,10 @@ void AssemblyLine::AddToAsyncBuffer(int assembly_line_id, std::any data)
 
 void AssemblyLine::LaunchQueue(SyncResults &results)
 {    
+    // If the passed results are not empty go ahead and empty it.
     if (!results.empty())
     {
-        THROW_RUNTIME_ERROR("ERROR-> void AssemblyLine::LaunchQueue(SyncResults &results), results must be an empty.");
+        SyncResults().swap(results);
     }
 
     // Creating a list of defaults for each assembly line before the lock to avoid wasting mutex lock time.
@@ -141,7 +145,7 @@ int AssemblyLine::LaunchAsyncQueue(AsyncResults &results)
 {
     if (!results.empty())
     {
-        THROW_RUNTIME_ERROR("ERROR-> int AssemblyLine::LaunchAsyncQueue(SyncResults &results), results must be empty.");
+        AsyncResults().swap(results);
     }
 
     for (size_t i = 0; i < assembly_line_count; i++) {
@@ -298,63 +302,87 @@ void AssemblyLine::workerThread()
         }
 
         Task task = assembly_lines[job.line_id][job.task_index]; // Grabbing the actual function
-        std::any job_data = job.data;
         
         lock.unlock(); // Unlock the mutex. 
 
         // Run the grabbed function.
         // NOTE -> 
         //  job_data is passed by reference so no need to return anything. 
-        //  This is more efficient in the event of larger peaces of data being passed.
-        task(job_data);
+        //  This is more efficient in the event of larger peaces of data being passed.;
+        task(job.data);
 
-        // If there is a next job in the assembly line add it to the front of the respective queue.
-        if (job.job_length - 1 > job.task_index)
+        if (job.data.type() == typeid(TaskError))
         {
-            Job nextJob;
-            nextJob.task_index = job.task_index + 1;
-            nextJob.data = job_data; // Make sure to replace the passed data with new data.
-            nextJob.line_id = job.line_id;
-            nextJob.job_length = job.job_length;
+            // If an error is reported in any task creat a Task error and ad it to the returned data.
+            TaskError error = std::any_cast<TaskError>(job.data);
+            error.task_index = job.task_index;
 
-            // Must lock the mutex again before accessing a queue
-            lock.lock();
-
-            // NOTE -> Adding the next job to the front of the queue to fallow FIFO "first in first out".
-            if (!is_async) 
-            {
-                sync_queue.push_front(nextJob); 
-            }
-            else
-            {
-                async_queue.push_front(nextJob);
-            }
-
-            //NOTE -> 
-            //  In some situations it is possible for the one of the queue's to become temporarily empty.
-            //  If this occurs and the opposing queue is also empty a thread may get put to sleep to soon,
-            //  leading to cpu idle time. From my testing this dose indead bring threads back in this event,
-            //  preventing threads from being put to sleep to soon.
-            thread_wake.notify_one(); 
-        } 
-        else
-        {
-            // TODO -> add finish data to a list that can be accessed by the main thread. can be used for status report or returning processed data.
             lock.lock();
 
             if (!is_async)
             {
-                sync_results[job.line_id].data.push_back(job_data);
-                sync_results[job.line_id].size++;
+                sync_results[job.line_id].data.push_back(error);
+                sync_results[job.line_id].length++;
             }
             else
             {
-                async_results[job.line_id].data.push_back(job_data);
-                async_results[job.line_id].size++;
+                async_results[job.line_id].data.push_back(error);
+                async_results[job.line_id].length++;
+            }
+
+            // NOTE -> In the event of a error no next job is posted into the queue.
+        } 
+        else
+        {
+            // If there is a next job in the assembly line add it to the front of the respective queue.
+            if (job.job_length - 1 > job.task_index)
+            {
+                Job nextJob;
+                nextJob.task_index = job.task_index + 1;
+                nextJob.data = job.data; // Make sure to replace the passed data with new data.
+                nextJob.line_id = job.line_id;
+                nextJob.job_length = job.job_length;
+    
+                // Must lock the mutex again before accessing a queue
+                lock.lock();
+    
+                // NOTE -> Adding the next job to the front of the queue to fallow FIFO "first in first out".
+                if (!is_async) 
+                {
+                    sync_queue.push_front(nextJob); 
+                }
+                else
+                {
+                    async_queue.push_front(nextJob);
+                }
+    
+                //NOTE -> 
+                //  In some situations it is possible for the one of the queue's to become temporarily empty.
+                //  If this occurs and the opposing queue is also empty a thread may get put to sleep to soon,
+                //  leading to cpu idle time. From my testing this dose indead bring threads back in this event,
+                //  preventing threads from being put to sleep to soon.
+                thread_wake.notify_one(); 
+            } 
+            else
+            {
+                // TODO -> add finish data to a list that can be accessed by the main thread. can be used for status report or returning processed data.
+                lock.lock();
+    
+                if (!is_async)
+                {
+                    sync_results[job.line_id].data.push_back(job.data);
+                    sync_results[job.line_id].length++;
+                }
+                else
+                {
+                    async_results[job.line_id].data.push_back(job.data);
+                    async_results[job.line_id].length++;
+                }
             }
         }
         lock.unlock();
-    }
+
+    } // End of the while loop.
 
     std::lock_guard<std::mutex> lock(mtx);
     threads_dead++;
