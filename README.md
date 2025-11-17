@@ -1,8 +1,8 @@
 # **AssemblyLine**
 
-The AssemblyLine is a high performance, cooperative thread pool library built in C++. This library is highly optimized for building multi-stage, concurrent-capable pipelines, and it seamlessly supports both synchronous and asynchronous operations.
+The AssemblyLine is a high performance, cooperative thread pool library built in C++. This library is highly optimized for building multi stage, concurrent capable pipelines, and it seamlessly supports both synchronous and asynchronous operations.
 
-It uses an automated cooperative yielding system that will efficiently transfer worker threads between synchronous and asynchronous task queues, virtually eliminating CPU downtime. This system operates using First-In, First-Out (FIFO) job queues to ensure predictable execution order.
+It uses an automated cooperative yielding system that will efficiently transfer worker threads between synchronous and asynchronous task queues, virtually eliminating CPU downtime. This system operates using First In, First Out (FIFO) job queues to ensure predictable execution order.
 
 ## **API and Workflow**
 
@@ -31,7 +31,7 @@ int main()
 ```cpp
 #include "AssemblyLine.h"
 
-// IMPORTANT NOTE -> It is very crucial that any variables used in the task's are unique the each functions scope.
+// IMPORTANT NOTE -> It is very crucial that any variables used in the task's are unique to each functions scope.
 // Any data that needs to flow from function to function must pass through the (std::any &data) variable. This passed variable is protected
 // from race conditions by the underlying engine, and insures the data is processed in the expected order.
 
@@ -57,7 +57,7 @@ Task task_1 = task_function;
 // You can also just make a lambda function.
 Task task_2 = [](std::any &data)
 {
-    // Last task passed a std::string, so make sure to cast it as a std::string.
+    // Last task's data passed is a std::string, so make sure to cast it as a std::string.
     std::string string_from_cast = std::any_cast<std::string>(data);
 
     // Functions code...
@@ -85,12 +85,12 @@ Task example_task = [](std::any &data)
     // Now we can modify and interact with the original data.
     large_data.example = "New data";
 
-    // NOTE -> The original passed source being modified so there is not need to assign the passed data a new value,
+    // NOTE -> The original passed source is being modified so there is no need to assign the passed data a new value,
     // assuming the next function in the assembly line will be using the same data type.
 }
 
 // IMPORTANT NOTES ->
-//      The passed assembly_line will become empty so no need to manually clear it if using to create other assembly lines afterword.
+//      The passed assembly_line will become empty after creation, so no need to manually clear it if reusing it to create other assembly lines afterword.
 //      This method returns a int that is the assembly lines index or "ID", this is how we will stage what assembly lines to add to the job queue's.
 ```
 
@@ -128,7 +128,7 @@ assembly_line_instance.AddToAsyncBuffer(assembly_line_id, int(10));
 
 // NOTES ->
 //      Assembly lines are both sync and async capable and can be used interchangeably, this only effects wether the execution is blocking or not.
-//      Buffers can not be modified, once you add jobs to them make sure to add them in the order you want to execute.
+//      Buffers can not be modified, once you add jobs to them make sure to add them in the order you want them to execute.
 ```
 
 ### _Launching queue's._
