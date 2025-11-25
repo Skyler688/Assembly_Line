@@ -30,9 +30,14 @@ void test(int threads)
     Task task_1 = [](std::any &data)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
-        float test = 0.0;
-        for (int i = 0; i < 200000; i++) {
-            test += 0.1;
+        // Simulate a complex vector/matrix operation lasting tens of microseconds.
+        float result = 0.0f;
+        
+        // Use a high iteration count to ensure the task is not trivial (e.g., 5 million ops)
+        for (int i = 0; i < 5000000; i++) 
+        {
+            // Simple heavy work: Floating point math is generally good for simulation
+            result += i * 0.0001f; 
         }
         
         // NOTE -> The data variable can be any data type. it is important to cast it as the correct type.
@@ -40,7 +45,7 @@ void test(int threads)
         // printf("thread_%d: %d\n", id, num);
     
         
-        data = test;
+        data = result;
     };
     
     assemblyLine.push_back(task_1);
@@ -49,7 +54,7 @@ void test(int threads)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
-        for (int i = 0; i < 200; i++) {
+        for (int i = 0; i < 20000; i++) {
             test += 0.1;
         }
         // for (int i = 0; i < 2000000; i++) {
@@ -70,7 +75,7 @@ void test(int threads)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
-        for (int i = 0; i < 2000; i++) {
+        for (int i = 0; i < 50000; i++) {
             test += 0.1;
         }
         
@@ -86,7 +91,7 @@ void test(int threads)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 1000; i++) {
             test += 0.1;
         }
         
@@ -151,11 +156,11 @@ void test(int threads)
     AsyncResults async_results;
     while (true)
     {
-        for (int i = 0; i < 5; i++)
+        for (int i = 0; i < 2000; i++)
         {
             line.AddToBuffer(lineID, i); 
         }
-        for (size_t i = 0; i < 8; i++)
+        for (size_t i = 0; i < 30; i++)
         {
             line.AddToBuffer(testID, std::string("hello"));
         }
@@ -164,8 +169,8 @@ void test(int threads)
         int size = line.LaunchAsyncQueue(async_results); // this will add to the async queue but will wait to run it until the sync queue is done.
 
         
-        printf("sync results size: %d\n", sync_results[testID].length);
-        printf("async results size: %d\n", async_results[lineID].length);
+        // printf("sync results size: %d\n", sync_results[testID].length);
+        // printf("async results size: %d\n", async_results[lineID].length);
         
         for (size_t i = 0; i < sync_results[lineID].length; i++)
         {
@@ -177,13 +182,13 @@ void test(int threads)
             else
             {
                 float result = std::any_cast<float>(sync_results[lineID].data[i]);
-                printf("Sync Result: %f\n", result);
+                // printf("Sync Result: %f\n", result);
             }
         }
         for (size_t i = 0; i < sync_results[testID].length; i++)
         {
             std::string result = std::any_cast<std::string>(sync_results[testID].data[i]);
-            printf("Sync Result: %s\n", result.c_str());
+            // printf("Sync Result: %s\n", result.c_str());
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(8)); // allow the async a bit of time to run.

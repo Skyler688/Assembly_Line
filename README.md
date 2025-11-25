@@ -217,7 +217,13 @@ for (int i = 0; i < sync_results[assembly_line_id].length; i++)
 }
 ```
 
+### _Logging back to the main thread_
+
+In progress...
+
 ## **TODO**
 
-- Refine the Makefile to auto build for cross platform.
-- Seek out feedback from others on possible improvements or useful features.
+- Refine the Makefile to auto build for cross platform. "Triple boot the macbook so you can test and develop cross platform apps"
+- Seek out feedback from others on possible problems/improvements or useful features.
+- Add documentation about concurrency overhead and methods that can be used to create ample task load. Things like Task Aggregation or batching, as well as instructions on how to test if the system is performing well or not. "In testing i noticed light tasks lead to very high os system overhead do to the frequency of thread lock's sleeps and wakes, heavy tasks perform better"
+- ?Create a efficient log system that can report back info to the main thread in results. This will be more useful for development and debugging then print or cout when multithreading do to IO sync causing strange and poor performance.
