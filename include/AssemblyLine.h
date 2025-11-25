@@ -10,7 +10,7 @@
 #include <typeinfo>
 
 // This is the data type used to create the assemblyLines.
-using Task = std::function<void(std::any &data)>;
+using Task = std::function<void(int thread_id, std::any &data)>;
 using Tasks = std::vector<Task>;
 
 struct TaskError {
@@ -35,20 +35,46 @@ int hardwareThreads();
 
 class AssemblyLine
 {
-public:
+    public:
     AssemblyLine();
     AssemblyLine(int threads);
-
+    
     int CreateAssemblyLine(std::vector<Task> &assembly_line);
     void AddToBuffer(int assembly_line_id, const std::any &data);
     void AddToAsyncBuffer(int assembly_line_id, const std::any &data);
     void LaunchQueue(SyncResults &results);
     int LaunchAsyncQueue(AsyncResults &results);
+    
+    // The loging methods need to live in the header file to avoid linker errors when using templates.
+    template<typename Log, typename... Logs>
+    void AddLog(int thread_id, Log first_log, Logs... later_logs)
+    {
+        std::stringstream log_entry;
+        log_entry << first_log;
+        ((log_entry << " " << later_logs), ...);
 
+        // NOTE -> No need for a mutex lock because each thread owns its own index inside the vector list.
+        logs[thread_id].push_back(log_entry.str());
+    }
+
+    void PrintLogs()
+    {
+        std::lock_guard<std::mutex> lock(mtx);
+
+        for (size_t i = 0; i < thread_count; i++)
+        {
+            for (size_t a = 0; a < logs[i].size(); i++)
+            {
+                printf("Thread_%zu -> %s\n", i, logs[i][a].c_str());
+                logs[i][a].clear();
+            }
+        }
+    }
+    
     ~AssemblyLine();
     
 private:
-    void workerThread();
+    void workerThread(int thread_id);
     void waitForWorkersToDie();
 
     // Helper
@@ -92,4 +118,6 @@ private:
 
     SyncResults sync_results;
     AsyncResults async_results;
+
+    std::vector<std::vector<std::string>> logs;
 };

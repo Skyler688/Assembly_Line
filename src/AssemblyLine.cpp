@@ -39,7 +39,9 @@ AssemblyLine::AssemblyLine()
     //  This may not be the case on some machines and will require further testing to gather data.
     for (int i = 0; i < thread_count; i++)
     {
-        std::thread worker(&AssemblyLine::workerThread, this);
+        std::vector<std::string> empty = {};
+        logs.push_back(empty);
+        std::thread worker(&AssemblyLine::workerThread, this, i);
         workers.push_back(std::move(worker)); // moved into a list so they can be joined in the deconstructor.
     }
 }
@@ -56,7 +58,9 @@ AssemblyLine::AssemblyLine(int threads)
 
     for (int i = 0; i < threads; i++)
     {
-        std::thread worker(&AssemblyLine::workerThread, this);
+        std::vector<std::string> empty = {};
+        logs.push_back(empty);
+        std::thread worker(&AssemblyLine::workerThread, this, i);
         workers.push_back(std::move(worker));
     }
 }
@@ -214,7 +218,7 @@ void AssemblyLine::waitForWorkersToDie()
 //  The threads use cooperative yielding to avoid any cpu idle time during transitions from sync and async.
 //  The sync_queue has priority in this system and will run until empty before using the async_queue.
 //  Int flags are used to share the state of each worker thread to the main thread.
-void AssemblyLine::workerThread()
+void AssemblyLine::workerThread(int thread_id)
 {
     bool is_async = false;
     bool sleeping = false;
@@ -302,7 +306,7 @@ void AssemblyLine::workerThread()
         
         lock.unlock(); // Unlock the mutex. 
 
-        task(job.data);
+        task(thread_id, job.data);
 
         // NOTE -> 
         //  job.data is passed by reference so no need to return anything. 
@@ -341,7 +345,7 @@ void AssemblyLine::workerThread()
                 // Must lock the mutex again before accessing a queue
                 lock.lock();
     
-                // NOTE -> Adding the next job to the front of the queue to fallow FIFO "first in first out".
+                // NOTE -> Adding the next job to the front of the queue to fallow FIFO "first in first out" of each assembly line.
                 if (!is_async) 
                 {
                     sync_queue.push_front(job); 

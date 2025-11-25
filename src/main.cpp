@@ -27,11 +27,14 @@ void test(int threads)
 
     
     // Simulated heavy functions of variable workloads.
-    Task task_1 = [](std::any &data)
+    Task task_1 = [&](int thread_id, std::any &data)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         // Simulate a complex vector/matrix operation lasting tens of microseconds.
         float result = 0.0f;
+
+        line.AddLog(thread_id, "hello", 100, false, 40.432, "bruh\n");
+
         
         // Use a high iteration count to ensure the task is not trivial (e.g., 5 million ops)
         for (int i = 0; i < 5000000; i++) 
@@ -50,7 +53,7 @@ void test(int threads)
     
     assemblyLine.push_back(task_1);
     
-    Task task_2 = [](std::any &data)
+    Task task_2 = [](int thread_id, std::any &data)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
@@ -71,7 +74,7 @@ void test(int threads)
     
     assemblyLine.push_back(task_2);
     
-    Task task_3 = [](std::any &data)
+    Task task_3 = [](int thread_id, std::any &data)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
@@ -87,7 +90,7 @@ void test(int threads)
     
     assemblyLine.push_back(task_3);
     
-    Task task_4 = [](std::any &data)
+    Task task_4 = [](int thread_id, std::any &data)
     {
         // std::cout << std::this_thread::get_id() << std::endl;
         float test = 0.0;
@@ -107,7 +110,7 @@ void test(int threads)
     
     assemblyLine.clear();
 
-    Task test_1 = [](std::any &data)
+    Task test_1 = [](int thread_id, std::any &data)
     {
         float test = 0.0;
         for (int i = 0; i < 200; i++)
@@ -123,7 +126,7 @@ void test(int threads)
 
     assemblyLine.push_back(test_1);
 
-    Task test_2 = [](std::any &data)
+    Task test_2 = [](int thread_id, std::any &data)
     {
         std::vector<int> test;
         for (int i = 0; i < 20; i++)
@@ -196,6 +199,8 @@ void test(int threads)
         if (size == 0) {
             break;
         }
+
+        line.PrintLogs();
 
         // printf("Loop Done\n");
     }
